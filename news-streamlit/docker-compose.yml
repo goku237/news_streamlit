@@ -1,0 +1,25 @@
+services:
+  app:
+    build: .
+    container_name: news-streamlit
+    restart: always
+    ports:
+      - "8501:8501"
+
+  caddy:
+    image: caddy:latest
+    container_name: news-caddy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:
