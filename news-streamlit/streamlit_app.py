@@ -6,14 +6,10 @@ import httpx
 import streamlit as st
 import pandas as pd
 
-# -----------------------------
-# Page setup
-# -----------------------------
+
 st.set_page_config(page_title="Trending News", page_icon="📰", layout="wide")
 
-# -----------------------------
-# Category -> default subreddits
-# -----------------------------
+
 DEFAULT_CATEGORIES = {
     "general": ["news", "worldnews"],
     "technology": ["technology", "programming", "gadgets"],
@@ -23,9 +19,7 @@ DEFAULT_CATEGORIES = {
     "science": ["science"],
 }
 
-# -----------------------------
-# Utilities: scoring, time, etc.
-# -----------------------------
+
 def time_decay_score(dt: datetime | None) -> float:
     if not dt:
         return 0.0
@@ -38,7 +32,6 @@ def time_decay_score(dt: datetime | None) -> float:
 def normalize_points(points: int | None) -> float:
     if not points:
         return 0.0
-    # Log scaling so giant threads don't completely dominate
     return math.log10(max(points, 1)) * 100.0
 
 def parse_dt_iso(s: str | None) -> datetime | None:
@@ -57,9 +50,7 @@ def fmt_time(dt: datetime | None) -> str:
     local = dt.astimezone(tz.tzlocal())
     return local.strftime("%Y-%m-%d %H:%M")
 
-# -----------------------------
-# Fetchers (HN + Reddit)
-# -----------------------------
+
 HN_URL = "https://hn.algolia.com/api/v1/search?tags=front_page"
 REDDIT_TPL = "https://www.reddit.com/r/{sub}/hot.json?limit=25"
 HEADERS = {"User-Agent": "NewsStreamlit/2.0 (+https://example.com)"}
@@ -125,9 +116,7 @@ def fetch_reddit(sub: str) -> List[Dict[str, Any]]:
         })
     return out
 
-# -----------------------------
-# Aggregation with options
-# -----------------------------
+
 def aggregate(
     category: str,
     enable_hn: bool,
@@ -141,10 +130,8 @@ def aggregate(
             articles.extend(fetch_reddit(s))
 
     if enable_hn:
-        # HN is mostly tech/general but often overlaps other categories
         articles.extend(fetch_hn())
 
-    # Compute composite score & attach category
     for a in articles:
         a["score"] = normalize_points(a.get("points")) + time_decay_score(a.get("published_at"))
         a["category"] = category
@@ -161,40 +148,31 @@ def aggregate(
 
     return deduped
 
-# -----------------------------
-# Sidebar controls
-# -----------------------------
 st.sidebar.title("Settings")
 
-# Persist user choices across reloads
 if "favorites" not in st.session_state:
     st.session_state["favorites"] = {}
 
-# Category + subreddit selection
 category = st.sidebar.selectbox("Category", list(DEFAULT_CATEGORIES.keys()), index=0)
 default_subs = DEFAULT_CATEGORIES.get(category, DEFAULT_CATEGORIES["general"])
 user_subs = st.sidebar.multiselect("Subreddits for this category", default_subs, default=default_subs)
 
-# Sources toggles
 cols_src = st.sidebar.columns(2)
 with cols_src[0]:
     enable_hn = st.checkbox("Hacker News", value=True)
 with cols_src[1]:
     enable_reddit = st.checkbox("Reddit", value=True)
 
-# Filters
 st.sidebar.markdown("### Filters")
 search_q = st.sidebar.text_input("Search in title")
 include_kw = st.sidebar.text_input("Include keywords (comma-sep)")
 exclude_kw = st.sidebar.text_input("Exclude keywords (comma-sep)")
 
-# Sorting + pagination
 st.sidebar.markdown("### Sorting & Pagination")
 sort_by = st.sidebar.selectbox("Sort by", ["Score (default)", "Points", "Newest"], index=0)
 page_size = st.sidebar.slider("Page size", 5, 50, 10)
 page = st.sidebar.number_input("Page #", min_value=1, value=1, step=1)
 
-# Auto refresh
 auto_refresh = st.sidebar.checkbox("Auto refresh every 60s", value=False)
 if auto_refresh:
     st.experimental_rerun  # noop reference to avoid linter warning
@@ -202,19 +180,15 @@ if auto_refresh:
     st.experimental_set_query_params(refresh=str(datetime.utcnow().timestamp()))
     st.autorefresh(interval=60_000, limit=1000, key="autorefresh")
 
-# -----------------------------
-# Main content
-# -----------------------------
+
 st.title("📰 Trending News (Streamlit)")
 
-# Fetch & aggregate
 with st.spinner("Fetching…"):
     if not (enable_hn or enable_reddit):
         items: List[Dict[str, Any]] = []
     else:
         items = aggregate(category, enable_hn, enable_reddit, user_subs)
 
-# Error surface (if any fetchers returned an error record)
 errors = [a["__error__"] for a in items if "__error__" in a]
 items = [a for a in items if "__error__" not in a]
 if errors:
@@ -222,11 +196,9 @@ if errors:
         for e in errors:
             st.write("- " + str(e))
 
-# Basic title search
 if search_q:
     items = [a for a in items if search_q.lower() in (a.get("title","").lower())]
 
-# Include/exclude keywords
 def matches_keywords(text: str, keywords_csv: str, must_include: bool) -> bool:
     if not keywords_csv.strip():
         return True
@@ -249,7 +221,7 @@ for a in items:
     filtered.append(a)
 items = filtered
 
-# Sort
+
 if sort_by == "Points":
     items.sort(key=lambda x: (x.get("points") or 0), reverse=True)
 elif sort_by == "Newest":
@@ -264,7 +236,7 @@ page_items = items[start:end]
 
 st.caption(f"{total} articles • showing {start+1}-{min(end,total)}")
 
-# Export controls
+
 def to_df(rows: List[Dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame([{
         "title": r.get("title"),
@@ -293,7 +265,6 @@ with exp_cols[2]:
 
 st.divider()
 
-# Render cards + Favorites
 def toggle_favorite(a: Dict[str, Any]):
     key = a.get("url") or a.get("title")
     if key in st.session_state["favorites"]:
@@ -315,7 +286,6 @@ for a in page_items:
         st.button(label, key=f"fav-{fav_key}", on_click=toggle_favorite, args=(a,))
     st.divider()
 
-# Favorites panel
 with st.expander(f"⭐ Favorites ({len(st.session_state['favorites'])})"):
     if not st.session_state["favorites"]:
         st.write("No favorites yet. Click **☆ Save** on any card.")
